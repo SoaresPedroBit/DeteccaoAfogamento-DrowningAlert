@@ -1,0 +1,65 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ===== Ambientes virtuais =====
+.venv/
+venv/
+env/
+ENV/
+
+# ===== IDE / Editor =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== Sistema operacional =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== Segredos / credenciais =====
+.env
+.env.*
+*.key
+roboflow_config.json
+
+# ===== Dataset (baixado via Roboflow, nao versionar) =====
+datasets/
+
+# ===== Pesos pre-treinados YOLO (baixados automaticamente) =====
+yolo11n.pt
+yolo26n.pt
+yolo26s.pt
+yolo*.pt
+
+# ===== Resultados de treino (arquivos grandes) =====
+# Versiona apenas metricas/graficos; ignora pesos e cache
+runs/*/weights/
+runs/detect/
+runs/**/*.cache
+
+# ===== Logs / temporarios =====
+*.log
+*.tmp
+*.bak
+*.out
+
+# ===== Jupyter =====
+.ipynb_checkpoints/
+
+# ===== Wandb / MLflow (caso seja usado no futuro) =====
+wandb/
+mlruns/
+
+# ===== Instrucoes internas do Claude Code =====
+CLAUDE.md
+.claude/
