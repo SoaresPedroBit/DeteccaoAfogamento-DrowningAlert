@@ -63,3 +63,9 @@ mlruns/
 # ===== Instrucoes internas do Claude Code =====
 CLAUDE.md
 .claude/
+
+# ===== AutoAnotation (outputs pesados, regeraveis pelos scripts) =====
+# Versiona scripts (.py), requirements.txt e analise_resultados.md.
+# Ignora videos baixados, frames extraidos, imagens copiadas, labels e previews.
+AutoAnotation/output/
+AutoAnotation/output_drowning/
