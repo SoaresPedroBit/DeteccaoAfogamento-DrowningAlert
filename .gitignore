@@ -64,6 +64,12 @@ mlruns/
 CLAUDE.md
 .claude/
 
+# ===== Sistema (artefatos pesados / gerados em execucao) =====
+# Versiona codigo (src/), config.yaml, requirements.txt e README.md.
+sistema/models/
+sistema/videos/
+sistema/logs/
+
 # ===== AutoAnotation (outputs pesados, regeraveis pelos scripts) =====
 # Versiona scripts (.py), requirements.txt e analise_resultados.md.
 # Ignora videos baixados, frames extraidos, imagens copiadas, labels e previews.

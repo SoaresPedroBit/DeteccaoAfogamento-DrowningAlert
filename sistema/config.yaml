@@ -1,0 +1,44 @@
+# Configuração central do sistema (valores conforme seção 8.5 do TCC)
+
+source:
+  # RTSP da câmera IP (modo produção) OU caminho de vídeo (modo validação)
+  # Ex.: rtsp://usuario:senha@192.168.0.50:554/stream1
+  uri: "rtsp://192.168.0.50:554/stream1"
+  target_fps: 25            # taxa assumida para dimensionar a janela temporal
+
+model:
+  weights: "models/best.pt" # pesos do YOLO26n/YOLO11n treinado
+  imgsz: 640
+  device: "cuda"            # "cuda" (RTX 4050) ou "cpu"
+  conf_threshold: 0.3       # confiança mínima da classe afogamento
+                            # (calibrado na validação: com 0.5 o flicker p/ adulto_ok
+                            # mantinha a janela em ~37% e o alerta não disparava)
+  # Classes referenciadas por NOME; os ids são resolvidos em runtime a partir
+  # de model.names (fonte da verdade), evitando drift com a ordem do data.yaml.
+  drowning_class: "afogamento"
+  pool_class: "piscinas"
+
+decision:
+  window_seconds: 3.0       # janela deslizante de 3 s (~75 frames a 25 FPS)
+  trigger_ratio: 0.5        # alerta se >= 50% dos frames da janela tiverem afogamento
+                            # (era 0.6; reduzido p/ dar margem à oscilação do modelo)
+  cooldown_seconds: 30.0    # inibição após disparo
+  roi_padding: 0.10         # expansão da bbox de "piscinas" para formar a ROI
+  roi_enabled: true
+  roi_reset_frames: 75      # frames sem piscina na ROI até voltar ao frame inteiro
+
+notifier:
+  sound_file: "assets/alarm.wav"
+  repeat: 3                 # repetições do som por alerta
+  telegram:
+    enabled: true           # ativa o envio do alerta via Telegram
+    # Credenciais via variáveis de ambiente (não commitar valores reais aqui):
+    #   TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID
+    bot_token: ""
+    chat_id: ""
+    send_snapshot: true     # anexa o frame do momento do disparo
+
+metrics:
+  enabled: true
+  output_dir: "logs"
+  scenario: ""              # ex.: "cenario_05_flutuando" — preenchido via CLI
