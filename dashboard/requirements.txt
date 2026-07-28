@@ -1,0 +1,3 @@
+# API do dashboard (a inferência tem seus próprios requisitos em sistema/)
+fastapi>=0.110
+uvicorn[standard]>=0.29

@@ -22,6 +22,7 @@ from pathlib import Path
 import cv2
 import yaml
 
+from src import dashboard_bridge
 from src.capture import VideoSource
 from src.decision import DecisionEngine
 from src.detector import Detector
@@ -50,6 +51,9 @@ def main() -> None:
     parser.add_argument("--source", default=None, help="sobrescreve source.uri (vídeo ou RTSP)")
     parser.add_argument("--scenario", default=None, help="nome do cenário p/ logs de métricas")
     parser.add_argument("--show", action="store_true", help="exibe janela com as detecções")
+    parser.add_argument("--realtime", action="store_true",
+                        help="reproduz o vídeo na taxa nominal, emulando a câmera "
+                             "(obrigatório p/ latências válidas na H2)")
     args = parser.parse_args()
 
     with open(args.config, encoding="utf-8") as f:
@@ -59,7 +63,7 @@ def main() -> None:
     _load_env_file(Path(args.config).resolve().parent / ".env")
 
     uri = args.source or cfg["source"]["uri"]
-    source = VideoSource(uri)
+    source = VideoSource(uri, realtime=args.realtime)
     fps = source.fps if not source.is_live else cfg["source"]["target_fps"]
 
     detector = Detector(
@@ -97,6 +101,11 @@ def main() -> None:
         args.scenario or cfg["metrics"].get("scenario", ""),
     ) if cfg["metrics"]["enabled"] else None
 
+    # Ponte com o dashboard (D-01): publica frame anotado, status e eventos.
+    bridge = dashboard_bridge.from_config(cfg, Path(args.config), uri, engine.window_size)
+    if bridge:
+        print(f"[dashboard] publicando em {bridge.data_dir}")
+
     frames_processed = 0
     print(f"[sistema] fonte: {uri} | fps: {fps:.0f} | "
           f"janela: {engine.window_size} frames | iniciando...")
@@ -114,9 +123,17 @@ def main() -> None:
                     continue
                 break  # fim do arquivo de vídeo
 
+            t0 = time.perf_counter()
             detections = detector.predict(frame.image)
+            inferencia_ms = (time.perf_counter() - t0) * 1000.0
             state = engine.update(detections, frame.capture_ts, time.time())
             frames_processed += 1
+
+            if bridge:
+                bridge.observe(detections, inferencia_ms)
+            if bridge or args.show:
+                # anota uma única vez; stream, snapshot e janela usam o mesmo frame
+                _draw(frame.image, detections, state)
 
             if state.triggered:
                 emitted_ts = notifier.alert()
@@ -136,9 +153,13 @@ def main() -> None:
                     telegram.alert(caption, frame.image.copy())
                 if metrics:
                     metrics.log_alert(state.trigger_capture_ts, emitted_ts)
+                if bridge:
+                    bridge.record_event(frame.image, state, emitted_ts)
+
+            if bridge:
+                bridge.publish_frame(frame.image)
 
             if args.show:
-                _draw(frame.image, detections, state)
                 display = frame.image
                 h, w = display.shape[:2]
                 if display_scale is None:
@@ -158,6 +179,8 @@ def main() -> None:
         cv2.destroyAllWindows()
         if metrics:
             metrics.finalize(engine.windows_evaluated, frames_processed)
+        if bridge:
+            bridge.close()
 
 
 def _draw(image, detections, state) -> None:

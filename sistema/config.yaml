@@ -8,6 +8,7 @@ source:
 
 model:
   weights: "models/best.pt" # pesos do YOLO26n/YOLO11n treinado
+  nome: "yolo11n"           # rótulo gravado nos eventos do dashboard (campo `modelo`)
   imgsz: 640
   device: "cuda"            # "cuda" (RTX 4050) ou "cpu"
   conf_threshold: 0.3       # confiança mínima da classe afogamento
@@ -42,3 +43,15 @@ metrics:
   enabled: true
   output_dir: "logs"
   scenario: ""              # ex.: "cenario_05_flutuando" — preenchido via CLI
+
+dashboard:
+  enabled: true             # publica frame anotado, status e eventos p/ o dashboard
+  data_dir: "../dashboard/data"        # latest.jpg, status.json, eventos.db
+  snapshots_dir: "../dashboard/snapshots"
+  camera_id: "cam01"
+  stream_fps: 15            # taxa de entrega ao navegador (D-02), desacoplada da inferência
+  stream_quality: 70        # qualidade JPEG do stream (D-02)
+  stream_max_width: 1280    # ~720p na saída do stream
+  snapshot_quality: 85      # snapshot é evidência: qualidade maior (D-05)
+  perf_sample_seconds: 5    # intervalo das amostras de FPS/inferência (G3/G4)
+  anonimizar_snapshots: true  # borrão facial antes de persistir (D-10)

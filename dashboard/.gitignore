@@ -1,0 +1,4 @@
+# artefatos de runtime — produzidos pela inferência e pela API
+data/
+snapshots/
+__pycache__/

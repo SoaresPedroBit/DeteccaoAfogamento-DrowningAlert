@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard — Detecção de Afogamentos</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Detecção de Afogamentos<small>Sistema de apoio ao operador — TCC Pedro Soares</small></h1>
+    <nav>
+      <button data-tela="vivo" class="ativa">Ao vivo</button>
+      <button data-tela="analise">Análise</button>
+      <button data-tela="historico">Histórico</button>
+    </nav>
+    <div id="barra-status">
+      <span><span class="led" id="led-camera"></span><span id="st-camera">verificando…</span></span>
+      <span>FPS <b id="st-fps">—</b></span>
+      <span>Modelo <b id="st-modelo">—</b></span>
+      <span>Inferência <b id="st-inferencia">—</b></span>
+      <span>Atividade <b id="st-uptime">—</b></span>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============================================= AO VIVO -->
+    <section id="tela-vivo" class="tela ativa">
+      <div class="player">
+        <img id="stream" src="/api/stream" alt="Transmissão da câmera">
+        <div class="offline" id="stream-offline">
+          <span class="icone">📷</span>
+          <span>Câmera desconectada ou processo de inferência parado</span>
+          <span style="font-size:12px">A imagem retorna automaticamente quando o sinal voltar.</span>
+        </div>
+        <div id="banner-alerta">
+          <span style="font-size:20px">🚨</span>
+          <span id="banner-texto">POSSÍVEL AFOGAMENTO DETECTADO</span>
+          <button class="botao" style="margin-left:auto;background:rgba(255,255,255,.18);border-color:transparent;color:#fff"
+                  onclick="silenciarAlerta()">Silenciar</button>
+        </div>
+      </div>
+      <aside class="lateral">
+        <h2>Últimos eventos</h2>
+        <div id="ultimos-eventos"><div class="vazio">Nenhum evento registrado.</div></div>
+      </aside>
+    </section>
+
+    <!-- ============================================= ANÁLISE -->
+    <section id="tela-analise" class="tela">
+      <div class="filtros">
+        <div class="grupo-periodo" id="filtro-periodo">
+          <button data-dias="1">Hoje</button>
+          <button data-dias="7" class="ativa">7 dias</button>
+          <button data-dias="30">30 dias</button>
+          <button data-dias="custom">Personalizado</button>
+        </div>
+        <span class="custom" id="periodo-custom">
+          <label>de</label><input type="date" id="filtro-de">
+          <label>até</label><input type="date" id="filtro-ate">
+          <button class="botao" onclick="carregarMetricas()">Aplicar</button>
+        </span>
+        <label>Modelo</label>
+        <select id="filtro-modelo"><option value="">todos</option></select>
+      </div>
+
+      <div class="cartoes">
+        <div class="tile"><div class="rotulo">Eventos de afogamento</div><div class="valor" id="tile-total">—</div><div class="detalhe" id="tile-pendentes"></div></div>
+        <div class="tile"><div class="rotulo">Confirmados</div><div class="valor" id="tile-confirmados">—</div></div>
+        <div class="tile"><div class="rotulo">Falsos positivos</div><div class="valor" id="tile-fp">—</div></div>
+        <div class="tile"><div class="rotulo">Precisão em operação</div><div class="valor" id="tile-precisao">—</div><div class="detalhe">confirmados / revisados</div></div>
+        <div class="tile"><div class="rotulo">Latência média</div><div class="valor" id="tile-latencia">—</div><div class="detalhe">início do evento → alerta</div></div>
+      </div>
+
+      <div class="grade-graficos">
+        <div class="card-grafico">
+          <div class="cabecalho"><h3>G1 · Latência de detecção</h3><span class="hipotese">H1</span>
+            <div class="acoes"><button onclick="exportarPNG('g1')">PNG</button><button onclick="exportarCSV('g1')">CSV</button></div>
+          </div>
+          <div class="subtitulo" id="g1-sub">Distribuição da latência entre o início do evento e o alerta</div>
+          <div class="area-plot"><canvas id="chart-g1"></canvas><div class="sem-dados" id="vazio-g1" hidden>Sem eventos no período</div></div>
+        </div>
+
+        <div class="card-grafico">
+          <div class="cabecalho"><h3>G2 · Confiança das detecções</h3><span class="hipotese">H1</span>
+            <div class="acoes"><button onclick="exportarPNG('g2')">PNG</button><button onclick="exportarCSV('g2')">CSV</button></div>
+          </div>
+          <div class="subtitulo">Confiança média por evento, separada pela revisão do operador</div>
+          <div class="area-plot"><canvas id="chart-g2"></canvas><div class="sem-dados" id="vazio-g2" hidden>Sem eventos revisados no período</div></div>
+        </div>
+
+        <div class="card-grafico">
+          <div class="cabecalho"><h3>G3 · FPS ao longo do tempo</h3><span class="hipotese">H2</span>
+            <div class="acoes"><button onclick="exportarPNG('g3')">PNG</button><button onclick="exportarCSV('g3')">CSV</button></div>
+          </div>
+          <div class="subtitulo">FPS médio de processamento, por modelo</div>
+          <div class="area-plot"><canvas id="chart-g3"></canvas><div class="sem-dados" id="vazio-g3" hidden>Sem amostras de desempenho no período</div></div>
+        </div>
+
+        <div class="card-grafico">
+          <div class="cabecalho"><h3>G4 · Tempo de inferência</h3><span class="hipotese">H2</span>
+            <div class="acoes"><button onclick="exportarPNG('g4')">PNG</button><button onclick="exportarCSV('g4')">CSV</button></div>
+          </div>
+          <div class="subtitulo">Média por frame com desvio padrão, comparativo entre modelos</div>
+          <div class="area-plot"><canvas id="chart-g4"></canvas><div class="sem-dados" id="vazio-g4" hidden>Sem amostras de desempenho no período</div></div>
+        </div>
+
+        <div class="card-grafico">
+          <div class="cabecalho"><h3>G5 · Eventos por hora do dia</h3><span class="hipotese">H3</span>
+            <div class="acoes"><button onclick="exportarPNG('g5')">PNG</button><button onclick="exportarCSV('g5')">CSV</button></div>
+          </div>
+          <div class="subtitulo">Distribuição dos alertas ao longo das 24 horas</div>
+          <div class="area-plot"><canvas id="chart-g5"></canvas><div class="sem-dados" id="vazio-g5" hidden>Sem eventos no período</div></div>
+        </div>
+
+        <div class="card-grafico">
+          <div class="cabecalho"><h3>G6 · Precisão e falsos positivos por dia</h3><span class="hipotese">H3</span>
+            <div class="acoes"><button onclick="exportarPNG('g6')">PNG</button><button onclick="exportarCSV('g6')">CSV</button></div>
+          </div>
+          <div class="subtitulo">Escalas distintas em painéis separados: precisão (%) e FP por hora de operação</div>
+          <div class="area-plot meia"><canvas id="chart-g6a"></canvas><div class="sem-dados" id="vazio-g6" hidden>Sem revisões no período</div></div>
+          <div class="area-plot meia"><canvas id="chart-g6b"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================= HISTÓRICO -->
+    <section id="tela-historico" class="tela">
+      <div class="filtros">
+        <label>de</label><input type="date" id="hist-de">
+        <label>até</label><input type="date" id="hist-ate">
+        <label>Classe</label>
+        <select id="hist-classe">
+          <option value="">todas</option>
+          <option value="afogamento">afogamento</option>
+          <option value="adulto_ok">adulto_ok</option>
+          <option value="crianca_ok">crianca_ok</option>
+        </select>
+        <label>Status</label>
+        <select id="hist-status">
+          <option value="">todos</option>
+          <option value="pendente">pendente</option>
+          <option value="confirmado">ocorrência real</option>
+          <option value="falso_positivo">falso positivo</option>
+        </select>
+        <label>Modelo</label>
+        <select id="hist-modelo"><option value="">todos</option></select>
+        <button class="botao primario" onclick="carregarHistorico(1)">Filtrar</button>
+        <button class="botao" onclick="exportarHistoricoCSV()">Exportar CSV</button>
+      </div>
+
+      <div class="tabela-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th><th>Data/hora</th><th>Classe</th><th>Conf. média</th>
+              <th>Latência</th><th>Modelo</th><th>Câmera</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="hist-corpo">
+            <tr><td colspan="8" class="vazio">Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="paginacao">
+        <span id="hist-info"></span>
+        <button class="botao" id="hist-ant" onclick="mudarPagina(-1)">‹ Anterior</button>
+        <button class="botao" id="hist-prox" onclick="mudarPagina(1)">Próxima ›</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- painel de detalhe do evento -->
+  <div id="painel-fundo" onclick="fecharPainel()"></div>
+  <aside id="painel-detalhe" aria-label="Detalhe do evento">
+    <button class="fechar" onclick="fecharPainel()" aria-label="Fechar">✕</button>
+    <h2 id="painel-titulo">Evento</h2>
+    <div id="painel-conteudo"></div>
+  </aside>
+
+  <div id="toast"></div>
+  <audio id="som-alerta" preload="auto"></audio>
+  <script src="app.js"></script>
+</body>
+</html>

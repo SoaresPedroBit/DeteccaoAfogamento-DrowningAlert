@@ -31,9 +31,10 @@ class VideoSource:
     frames dos cenários gravados sejam processados (protocolo da seção 8.6).
     """
 
-    def __init__(self, uri: str):
+    def __init__(self, uri: str, realtime: bool = False):
         self.uri = uri
         self.is_live = uri.lower().startswith(("rtsp://", "http://", "https://"))
+        self.realtime = realtime and not self.is_live
         self._cap = cv2.VideoCapture(uri, cv2.CAP_FFMPEG)
         if not self._cap.isOpened():
             raise RuntimeError(f"Não foi possível abrir a fonte de vídeo: {uri}")
@@ -44,6 +45,8 @@ class VideoSource:
         self._latest: Frame | None = None
         self._running = False
         self._index = 0
+        self._start_mono: float | None = None
+        self._start_wall: float | None = None
 
         if self.is_live:
             self._running = True
@@ -71,12 +74,38 @@ class VideoSource:
                 self._latest = None  # consome; evita reprocessar o mesmo frame
             return frame
 
+        if self.realtime:
+            return self._read_realtime()
+
         ok, img = self._cap.read()
         if not ok:
             return None
         frame = Frame(image=img, capture_ts=time.time(), index=self._index)
         self._index += 1
         return frame
+
+    def _read_realtime(self) -> Frame | None:
+        """Modo validação com relógio real (H2): entrega frames na cadência
+        nominal do arquivo, emulando uma câmera — se a inferência atrasa,
+        frames intermediários são descartados (como no modo RTSP); se adianta,
+        espera o instante de captura do frame. O capture_ts corresponde ao
+        momento em que uma câmera teria capturado aquele frame."""
+        if self._start_mono is None:
+            self._start_mono = time.monotonic()
+            self._start_wall = time.time()
+        alvo = int((time.monotonic() - self._start_mono) * self.fps)
+        while True:
+            ok, img = self._cap.read()
+            if not ok:
+                return None
+            idx = self._index
+            self._index += 1
+            if idx >= alvo:
+                break
+        espera = (self._start_mono + idx / self.fps) - time.monotonic()
+        if espera > 0:
+            time.sleep(espera)
+        return Frame(image=img, capture_ts=self._start_wall + idx / self.fps, index=idx)
 
     def release(self) -> None:
         self._running = False
