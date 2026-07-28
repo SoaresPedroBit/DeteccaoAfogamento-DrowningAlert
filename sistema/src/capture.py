@@ -77,12 +77,18 @@ class VideoSource:
         if self.realtime:
             return self._read_realtime()
 
+        # Modo offline: processa todos os frames o mais rápido possível. O
+        # capture_ts usa o tempo de vídeo (início + idx/fps), não o relógio de
+        # parede, para que a janela temporal da decisão cubra 3 s de vídeo — a
+        # velocidade de processamento não deve alterar a lógica de detecção.
         ok, img = self._cap.read()
         if not ok:
             return None
-        frame = Frame(image=img, capture_ts=time.time(), index=self._index)
+        if self._start_wall is None:
+            self._start_wall = time.time()
+        idx = self._index
         self._index += 1
-        return frame
+        return Frame(image=img, capture_ts=self._start_wall + idx / self.fps, index=idx)
 
     def _read_realtime(self) -> Frame | None:
         """Modo validação com relógio real (H2): entrega frames na cadência

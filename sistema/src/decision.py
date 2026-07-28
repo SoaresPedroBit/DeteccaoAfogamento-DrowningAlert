@@ -1,10 +1,16 @@
 """Camada de processamento (parte 2) — lógica de decisão temporal.
 
-Implementa a janela deslizante de 3 segundos (~75 frames a 25 FPS):
-um alerta é disparado quando a classe `afogamento` aparece com confiança
-mínima em pelo menos 60% dos frames da janela. Após o disparo, um período
-de inibição (cooldown) de 30 s evita alertas repetidos para o mesmo evento
-(seção 8.5 do TCC).
+Implementa a janela deslizante de 3 segundos: um alerta é disparado quando a
+classe `afogamento` aparece com confiança mínima em pelo menos 60% dos frames
+da janela. Após o disparo, um período de inibição (cooldown) de 30 s evita
+alertas repetidos para o mesmo evento (seção 8.5 do TCC).
+
+A janela é baseada em TEMPO (via `capture_ts`), não em contagem de frames: a
+razão é calculada sobre os frames cujos timestamps de captura caem nos últimos
+`window_seconds`. Isso a torna robusta a descarte de frames — que ocorre tanto
+na câmera ao vivo (mantém-se só o frame mais recente) quanto no modo `--realtime`
+(quando a inferência não acompanha a taxa nominal do vídeo). Uma janela por
+contagem de frames só representaria 3 s reais se nenhum frame fosse descartado.
 """
 
 from __future__ import annotations
@@ -33,14 +39,16 @@ class DecisionEngine:
     drowning_class: str = "afogamento"  # comparação por nome (model.names)
     conf_threshold: float = 0.5
 
-    _window: deque = field(init=False)
+    _window: deque = field(init=False)          # (capture_ts, positive)
+    _window_start_ts: float | None = field(default=None, init=False)
     _last_alert_ts: float = field(default=-1e9, init=False)
     _first_positive_ts: float = field(default=0.0, init=False)
     windows_evaluated: int = field(default=0, init=False)  # denominador da H3
 
     def __post_init__(self) -> None:
+        # valor nominal, mantido só para exibição/registro (não limita a janela)
         self.window_size = max(1, int(round(self.fps * self.window_seconds)))
-        self._window = deque(maxlen=self.window_size)
+        self._window = deque()
 
     def update(self, detections, capture_ts: float, now: float) -> WindowState:
         positive = any(
@@ -51,10 +59,19 @@ class DecisionEngine:
         if positive and not self._window_has_positive():
             self._first_positive_ts = capture_ts  # marca o início do evento (H2)
 
-        self._window.append(positive)
+        if self._window_start_ts is None:
+            self._window_start_ts = capture_ts
+        self._window.append((capture_ts, positive))
 
-        window_full = len(self._window) == self.window_size
-        ratio = sum(self._window) / len(self._window) if self._window else 0.0
+        # descarta os frames cujo timestamp saiu dos últimos `window_seconds`
+        limite = capture_ts - self.window_seconds
+        while self._window and self._window[0][0] < limite:
+            self._window.popleft()
+
+        # janela cheia quando já há `window_seconds` de histórico acumulado
+        window_full = (capture_ts - self._window_start_ts) >= self.window_seconds
+        positivos = sum(p for _, p in self._window)
+        ratio = positivos / len(self._window) if self._window else 0.0
         in_cooldown = (now - self._last_alert_ts) < self.cooldown_seconds
 
         if window_full:
@@ -63,7 +80,8 @@ class DecisionEngine:
         triggered = window_full and ratio >= self.trigger_ratio and not in_cooldown
         if triggered:
             self._last_alert_ts = now
-            self._window.clear()  # reinicia o histórico após o disparo
+            self._window.clear()          # reinicia o histórico após o disparo
+            self._window_start_ts = None
 
         return WindowState(
             triggered=triggered,
@@ -74,4 +92,4 @@ class DecisionEngine:
         )
 
     def _window_has_positive(self) -> bool:
-        return any(self._window)
+        return any(p for _, p in self._window)
